@@ -1,0 +1,6 @@
+/semver
+/bin/
+/dist/
+*.test
+*.out
+*.prof
