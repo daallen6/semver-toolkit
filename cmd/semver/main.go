@@ -1,5 +1,6 @@
 // Command semver is a thin wrapper around the semver package for
-// validating, sorting, and comparing version strings from the shell.
+// validating, sorting, comparing, and range-checking version strings
+// from the shell.
 package main
 
 import (
@@ -27,6 +28,8 @@ func main() {
 		code = runSort(os.Args[2:])
 	case "compare":
 		code = runCompare(os.Args[2:])
+	case "check":
+		code = runCheck(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 		code = 0
@@ -42,12 +45,19 @@ func usage() {
 	fmt.Fprintln(os.Stderr, `usage: semver <command> [arguments]
 
 commands:
-  validate [files...]   check each line is a valid semantic version
-  sort [files...]       print versions in ascending order
-  compare <a> <b>       print <, =, or > comparing two versions
+  validate [files...]        check each line is a valid semantic version
+  sort [files...]            print versions in ascending order
+  compare <a> <b>            print <, =, or > comparing two versions
+  check <range> [files...]   print MATCH/NOMATCH for each version against a range
 
-validate and sort read from the given files, or from stdin if no
-files are given. Blank lines and lines starting with # are ignored.`)
+validate, sort, and check read from the given files, or from stdin
+if no files are given. Blank lines and lines starting with # are
+ignored.
+
+A range is one or more comparators (=, !=, >, >=, <, <=, ^, ~)
+separated by spaces (all must match), and optionally several such
+groups separated by "||" (any group may match), e.g.
+">=1.0.0 <2.0.0" or "^1.2.3 || ^2.0.0".`)
 }
 
 func runValidate(paths []string) int {
@@ -115,6 +125,42 @@ func runCompare(args []string) int {
 		fmt.Println(">")
 	default:
 		fmt.Println("=")
+	}
+	return 0
+}
+
+func runCheck(args []string) int {
+	if len(args) < 1 {
+		fmt.Fprintln(os.Stderr, "usage: semver check <range> [files...]")
+		return 2
+	}
+	rng, err := semver.ParseRange(args[0])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "semver: %s: %v\n", args[0], err)
+		return 2
+	}
+	lines, err := readLines(args[1:])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "semver:", err)
+		return 1
+	}
+	bad := 0
+	for _, line := range lines {
+		v, err := semver.Parse(line)
+		if err != nil {
+			fmt.Printf("INVALID %s\n", line)
+			bad++
+			continue
+		}
+		if rng.Matches(v) {
+			fmt.Printf("MATCH   %s\n", line)
+		} else {
+			fmt.Printf("NOMATCH %s\n", line)
+			bad++
+		}
+	}
+	if bad > 0 {
+		return 1
 	}
 	return 0
 }
