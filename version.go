@@ -97,6 +97,53 @@ func Less(a, b Version) bool {
 	return a.Compare(b) < 0
 }
 
+// ErrInvalidBumpKind is returned by Bump when kind isn't one of
+// "major", "minor", "patch", or "prerelease".
+var ErrInvalidBumpKind = errors.New("semver: invalid bump kind")
+
+// Bump returns the next version after v for the given component.
+// Build metadata never survives a bump, since it describes the
+// build that produced the old version, not the new one.
+//
+// major, minor, and patch increment that component, zero out the
+// components to its right, and drop any prerelease, mirroring how a
+// prerelease of a version is superseded by the release itself.
+//
+// prerelease advances the prerelease identifiers: if v already has a
+// prerelease ending in a numeric identifier, that number is
+// incremented; if it ends in a non-numeric identifier, ".0" is
+// appended; if v has no prerelease at all, the patch is incremented
+// and a "0" prerelease is attached, since a prerelease must sort
+// below the version it leads up to.
+func (v Version) Bump(kind string) (Version, error) {
+	switch kind {
+	case "major":
+		return Version{Major: v.Major + 1}, nil
+	case "minor":
+		return Version{Major: v.Major, Minor: v.Minor + 1}, nil
+	case "patch":
+		return Version{Major: v.Major, Minor: v.Minor, Patch: v.Patch + 1}, nil
+	case "prerelease":
+		return v.bumpPrerelease(), nil
+	default:
+		return Version{}, fmt.Errorf("%w: %q", ErrInvalidBumpKind, kind)
+	}
+}
+
+func (v Version) bumpPrerelease() Version {
+	if v.Prerelease == "" {
+		return Version{Major: v.Major, Minor: v.Minor, Patch: v.Patch + 1, Prerelease: "0"}
+	}
+	ids := strings.Split(v.Prerelease, ".")
+	last := len(ids) - 1
+	if n, err := strconv.ParseUint(ids[last], 10, 64); err == nil {
+		ids[last] = strconv.FormatUint(n+1, 10)
+	} else {
+		ids = append(ids, "0")
+	}
+	return Version{Major: v.Major, Minor: v.Minor, Patch: v.Patch, Prerelease: strings.Join(ids, ".")}
+}
+
 func cmpUint(a, b uint64) int {
 	switch {
 	case a < b:

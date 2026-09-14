@@ -30,6 +30,8 @@ func main() {
 		code = runCompare(os.Args[2:])
 	case "check":
 		code = runCheck(os.Args[2:])
+	case "bump":
+		code = runBump(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 		code = 0
@@ -49,6 +51,7 @@ commands:
   sort [files...]            print versions in ascending order
   compare <a> <b>            print <, =, or > comparing two versions
   check <range> [files...]   print MATCH/NOMATCH for each version against a range
+  bump <kind> <version>      print the next version for kind (major, minor, patch, prerelease)
 
 validate, sort, and check read from the given files, or from stdin
 if no files are given. Blank lines and lines starting with # are
@@ -162,6 +165,25 @@ func runCheck(args []string) int {
 	if bad > 0 {
 		return 1
 	}
+	return 0
+}
+
+func runBump(args []string) int {
+	if len(args) != 2 {
+		fmt.Fprintln(os.Stderr, "usage: semver bump <major|minor|patch|prerelease> <version>")
+		return 2
+	}
+	v, err := semver.Parse(args[1])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "semver: %s: %v\n", args[1], err)
+		return 1
+	}
+	next, err := v.Bump(args[0])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "semver:", err)
+		return 2
+	}
+	fmt.Println(next.String())
 	return 0
 }
 

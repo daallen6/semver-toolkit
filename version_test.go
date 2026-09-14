@@ -1,6 +1,7 @@
 package semver
 
 import (
+	"errors"
 	"testing"
 )
 
@@ -136,6 +137,70 @@ func TestCompareIgnoresBuild(t *testing.T) {
 	}
 	if c := a.Compare(b); c != 0 {
 		t.Errorf("Compare with differing build metadata = %d, want 0", c)
+	}
+}
+
+func TestBump(t *testing.T) {
+	cases := []struct {
+		in   string
+		kind string
+		want string
+	}{
+		{"1.2.3", "major", "2.0.0"},
+		{"1.2.3", "minor", "1.3.0"},
+		{"1.2.3", "patch", "1.2.4"},
+		{"1.2.3-alpha.1", "major", "2.0.0"},
+		{"1.2.3-alpha.1", "minor", "1.3.0"},
+		{"1.2.3-alpha.1", "patch", "1.2.4"},
+		{"1.2.3+build.5", "patch", "1.2.4"},
+		{"1.2.3", "prerelease", "1.2.4-0"},
+		{"1.2.3-alpha", "prerelease", "1.2.3-alpha.0"},
+		{"1.2.3-alpha.1", "prerelease", "1.2.3-alpha.2"},
+		{"1.2.3-alpha.9", "prerelease", "1.2.3-alpha.10"},
+		{"1.2.3-0.9", "prerelease", "1.2.3-0.10"},
+	}
+	for _, c := range cases {
+		v, err := Parse(c.in)
+		if err != nil {
+			t.Fatalf("Parse(%q) returned error: %v", c.in, err)
+		}
+		got, err := v.Bump(c.kind)
+		if err != nil {
+			t.Fatalf("Bump(%q).Bump(%q) returned error: %v", c.in, c.kind, err)
+		}
+		if got.String() != c.want {
+			t.Errorf("%q.Bump(%q) = %q, want %q", c.in, c.kind, got.String(), c.want)
+		}
+	}
+}
+
+func TestBumpInvalidKind(t *testing.T) {
+	v, err := Parse("1.2.3")
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	if _, err := v.Bump("bogus"); !errors.Is(err, ErrInvalidBumpKind) {
+		t.Errorf("Bump(%q) error = %v, want ErrInvalidBumpKind", "bogus", err)
+	}
+}
+
+func TestBumpIsMonotonic(t *testing.T) {
+	kinds := []string{"major", "minor", "patch", "prerelease"}
+	starts := []string{"0.0.0", "1.2.3", "1.2.3-alpha", "1.2.3-alpha.1", "1.2.3-0.9"}
+	for _, start := range starts {
+		v, err := Parse(start)
+		if err != nil {
+			t.Fatalf("Parse(%q) returned error: %v", start, err)
+		}
+		for _, kind := range kinds {
+			next, err := v.Bump(kind)
+			if err != nil {
+				t.Fatalf("%q.Bump(%q) returned error: %v", start, kind, err)
+			}
+			if !Less(v, next) {
+				t.Errorf("%q.Bump(%q) = %q, want a version greater than %q", start, kind, next.String(), start)
+			}
+		}
 	}
 }
 
